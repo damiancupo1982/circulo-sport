@@ -8,24 +8,6 @@ export interface Cliente {
   created_at: Date;
 }
 
-export interface Reserva {
-  id: string;
-  cancha_id: string;
-  cliente_id: string;
-  cliente_nombre: string;
-  fecha: string; // YYYY-MM-DD
-  hora_inicio: string; // HH:MM
-  hora_fin: string; // HH:MM
-  metodo_pago: 'efectivo' | 'transferencia' | 'pendiente';
-  precio_base: number;
-  extras: Extra[];
-  items_libres: ItemLibre[];
-  total: number;
-  estado: 'confirmada' | 'cancelada';
-  seña?: string; // Comentario sobre la seña
-  created_at: Date;
-}
-
 export interface Extra {
   id: string;
   nombre: string;
@@ -55,6 +37,28 @@ export interface TransaccionCaja {
   fecha_hora: Date;
   reserva_id?: string;
   metodo_pago?: 'efectivo' | 'transferencia' | 'pendiente';
+}
+
+export interface Reserva {
+  id: string;
+  cancha_id: string;
+  cliente_id: string;
+  cliente_nombre: string;
+  fecha: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:MM
+  hora_fin: string; // HH:MM
+  metodo_pago: 'efectivo' | 'transferencia' | 'pendiente';
+  precio_base: number;
+  extras: Extra[];
+  items_libres: ItemLibre[];
+  total: number;
+  // Incluimos 'pendiente' para alinear con el formulario
+  estado: 'confirmada' | 'cancelada' | 'pendiente';
+  seña?: string; // Comentario sobre la seña
+  // NUEVO: seña real (monto) y método de esa seña cuando el pago general está "pendiente"
+  seña_monto?: number; // acumulada
+  seña_metodo?: 'efectivo' | 'transferencia';
+  created_at: Date;
 }
 
 export const CANCHAS: Cancha[] = [
