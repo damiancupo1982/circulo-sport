@@ -62,35 +62,35 @@ export const CANCHAS: Cancha[] = [
     id: 'futbol-5-1',
     nombre: 'Fútbol 5',
     tipo: 'futbol-5',
-    precio_base: 8000,
+    precio_base: 60000,
     color: 'bg-blue-500'
   },
   {
     id: 'futbol-8-1',
     nombre: 'Fútbol 8',
     tipo: 'futbol-8',
-    precio_base: 12000,
+    precio_base: 90000,
     color: 'bg-green-500'
   },
   {
     id: 'futbol-2-1',
     nombre: 'Fútbol 2',
     tipo: 'futbol-2',
-    precio_base: 5000,
+    precio_base: 15000,
     color: 'bg-orange-500'
   },
   {
     id: 'padel-1',
     nombre: 'Pádel 1',
     tipo: 'padel',
-    precio_base: 10000,
+    precio_base: 45000,
     color: 'bg-purple-500'
   },
   {
     id: 'padel-2',
     nombre: 'Pádel 2',
     tipo: 'padel',
-    precio_base: 10000,
+    precio_base: 45000,
     color: 'bg-pink-500'
   }
 ];
