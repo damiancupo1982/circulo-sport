@@ -3,6 +3,7 @@ import { X, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { Reserva, Cliente, Extra, ItemLibre, CANCHAS, ExtraDisponible } from '../types';
 import { clientesStorage } from '../storage/clientes';
 import { extrasStorage } from '../storage/extras';
+import { reservasStorage } from '../storage/reservas';
 
 interface ReservaModalProps {
   isOpen: boolean;
