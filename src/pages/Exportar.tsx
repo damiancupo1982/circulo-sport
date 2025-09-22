@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, FileText, Users, DollarSign, Calendar, Settings } from 'lucide-react';
+import { Download, FileText, Users, DollarSign, Calendar, Settings, X } from 'lucide-react';
 import { exportUtils } from '../utils/export';
 import { reservasStorage } from '../storage/reservas';
 import { clientesStorage } from '../storage/clientes';
@@ -19,19 +19,17 @@ export const Exportar: React.FC = () => {
 
   const handleExport = async (tipo: 'reservas' | 'clientes' | 'transacciones') => {
     setExportando(tipo);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simular delay
-      
+      await new Promise(resolve => setTimeout(resolve, 300));
       switch (tipo) {
         case 'reservas':
-          exportUtils.exportReservas();
+          exportUtils.exportReservas(); // incluye columnas de seña
           break;
         case 'clientes':
           exportUtils.exportClientes();
           break;
         case 'transacciones':
-          exportUtils.exportTransacciones();
+          exportUtils.exportTransacciones(); // marca SEÑA / SALDO por concepto
           break;
       }
     } catch (error) {
@@ -45,12 +43,16 @@ export const Exportar: React.FC = () => {
   const handleSaveExtra = (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget as HTMLFormElement);
-    
     const extra: ExtraDisponible = {
       id: editingExtra?.id || `extra-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      nombre: formData.get('nombre') as string,
+      nombre: (formData.get('nombre') as string).trim(),
       precio: Number(formData.get('precio'))
     };
+
+    if (!extra.nombre) {
+      alert('El nombre del extra es obligatorio.');
+      return;
+    }
 
     extrasStorage.save(extra);
     setExtrasDisponibles(extrasStorage.getAll());
@@ -71,13 +73,8 @@ export const Exportar: React.FC = () => {
     totalCaja: cajaStorage.getTotalCaja()
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(amount);
 
   return (
     <div className="space-y-6">
@@ -92,7 +89,7 @@ export const Exportar: React.FC = () => {
         </button>
       </div>
 
-      {/* Resumen de datos */}
+      {/* Resumen */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
@@ -137,26 +134,22 @@ export const Exportar: React.FC = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total en Caja</p>
-              <p className="text-2xl font-semibold text-purple-600">
-                {formatCurrency(estadisticas.totalCaja)}
-              </p>
+              <p className="text-2xl font-semibold text-purple-600">{formatCurrency(estadisticas.totalCaja)}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Opciones de exportación */}
+      {/* Exportes */}
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">Exportar Archivos CSV</h2>
-            <p className="text-gray-600 mt-1">
-              Descarga tus datos en formato CSV para usar en Excel u otras aplicaciones
-            </p>
+            <p className="text-gray-600 mt-1">Descargá tus datos en CSV (UTF-8, separado por comas).</p>
           </div>
 
           <div className="p-6 space-y-4">
-            {/* Exportar Reservas */}
+            {/* Reservas */}
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div className="flex items-center space-x-4">
                 <div className="p-3 bg-blue-100 rounded-lg">
@@ -164,12 +157,7 @@ export const Exportar: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-medium text-gray-900">Exportar Reservas</h3>
-                  <p className="text-sm text-gray-600">
-                    Todas las reservas con detalles de canchas, clientes, horarios y pagos
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {estadisticas.reservas} registros disponibles
-                  </p>
+                  <p className="text-sm text-gray-600">Incluye seña_monto, seña_metodo y seña_aplica_caja</p>
                 </div>
               </div>
               <button
@@ -182,7 +170,7 @@ export const Exportar: React.FC = () => {
               </button>
             </div>
 
-            {/* Exportar Clientes */}
+            {/* Clientes */}
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div className="flex items-center space-x-4">
                 <div className="p-3 bg-green-100 rounded-lg">
@@ -190,12 +178,6 @@ export const Exportar: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-medium text-gray-900">Exportar Clientes</h3>
-                  <p className="text-sm text-gray-600">
-                    Base de datos completa de clientes con información de contacto
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {estadisticas.clientes} registros disponibles
-                  </p>
                 </div>
               </div>
               <button
@@ -208,7 +190,7 @@ export const Exportar: React.FC = () => {
               </button>
             </div>
 
-            {/* Exportar Transacciones */}
+            {/* Transacciones */}
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div className="flex items-center space-x-4">
                 <div className="p-3 bg-orange-100 rounded-lg">
@@ -216,12 +198,7 @@ export const Exportar: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-medium text-gray-900">Exportar Transacciones</h3>
-                  <p className="text-sm text-gray-600">
-                    Historial completo de ingresos y retiros de caja
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {estadisticas.transacciones} registros disponibles
-                  </p>
+                  <p className="text-sm text-gray-600">Agrega columna tipo_movimiento (SEÑA / SALDO / MANUAL / RETIRO)</p>
                 </div>
               </div>
               <button
@@ -236,30 +213,28 @@ export const Exportar: React.FC = () => {
           </div>
         </div>
 
-        {/* Información adicional */}
+        {/* Info CSV */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <div className="flex items-center">
             <FileText className="w-6 h-6 text-blue-600 mr-3" />
             <div>
-              <h3 className="font-medium text-blue-900">Información sobre los archivos CSV</h3>
+              <h3 className="font-medium text-blue-900">Formato de los CSV</h3>
               <div className="text-sm text-blue-700 mt-2 space-y-1">
-                <p>• Los archivos incluyen encabezados descriptivos en español</p>
-                <p>• Fechas en formato ISO (YYYY-MM-DD) compatible con Excel</p>
-                <p>• Caracteres especiales correctamente codificados (UTF-8)</p>
-                <p>• Separación por comas para máxima compatibilidad</p>
-                <p>• Nombre de archivo incluye la fecha de exportación</p>
+                <p>• Fechas ISO (YYYY-MM-DD) y horas localizadas</p>
+                <p>• UTF-8, separado por comas</p>
+                <p>• Reservas: incluye seña_monto, seña_metodo, seña_aplica_caja</p>
+                <p>• Transacciones: incluye tipo_movimiento (SEÑA / SALDO / MANUAL / RETIRO)</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Modal para configurar extras */}
+      {/* Modal Extras */}
       {showExtrasModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowExtrasModal(false)} />
-            
             <div className="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-medium text-gray-900">Configurar Extras</h3>
@@ -269,11 +244,8 @@ export const Exportar: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {/* Formulario para agregar/editar extra */}
                 <form onSubmit={handleSaveExtra} className="p-4 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-3">
-                    {editingExtra ? 'Editar Extra' : 'Nuevo Extra'}
-                  </h4>
+                  <h4 className="font-medium text-gray-900 mb-3">{editingExtra ? 'Editar Extra' : 'Nuevo Extra'}</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <input
                       type="text"
@@ -303,16 +275,12 @@ export const Exportar: React.FC = () => {
                         Cancelar
                       </button>
                     )}
-                    <button
-                      type="submit"
-                      className="px-3 py-1 text-white bg-blue-600 rounded hover:bg-blue-700"
-                    >
+                    <button type="submit" className="px-3 py-1 text-white bg-blue-600 rounded hover:bg-blue-700">
                       {editingExtra ? 'Actualizar' : 'Agregar'}
                     </button>
                   </div>
                 </form>
 
-                {/* Lista de extras existentes */}
                 <div className="space-y-2">
                   <h4 className="font-medium text-gray-900">Extras Disponibles</h4>
                   {extrasDisponibles.map(extra => (
@@ -322,22 +290,17 @@ export const Exportar: React.FC = () => {
                         <span className="ml-2 text-gray-600">${extra.precio}</span>
                       </div>
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => setEditingExtra(extra)}
-                          className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded"
-                        >
+                        <button onClick={() => setEditingExtra(extra)} className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded">
                           Editar
                         </button>
-                        <button
-                          onClick={() => handleDeleteExtra(extra.id)}
-                          className="px-2 py-1 text-red-600 hover:bg-red-50 rounded"
-                        >
+                        <button onClick={() => handleDeleteExtra(extra.id)} className="px-2 py-1 text-red-600 hover:bg-red-50 rounded">
                           Eliminar
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
+
               </div>
             </div>
           </div>
