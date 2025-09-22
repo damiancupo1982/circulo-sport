@@ -11,6 +11,7 @@ export const Caja: React.FC = () => {
   const [tipoRetiro, setTipoRetiro] = useState<'retiro' | null>(null);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [password, setPassword] = useState('');
+  const [ingresoModalOpen, setIngresoModalOpen] = useState(false);
   const [totales, setTotales] = useState({
     totalCaja: 0,
     totalEfectivo: 0,
@@ -98,6 +99,29 @@ export const Caja: React.FC = () => {
     }
   };
 
+  const handleIngreso = (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget as HTMLFormElement);
+    
+    const concepto = formData.get('concepto') as string;
+    const monto = Number(formData.get('monto'));
+    const metodoPago = formData.get('metodo_pago') as 'efectivo' | 'transferencia';
+
+    if (monto <= 0) {
+      alert('El monto debe ser mayor a 0.');
+      return;
+    }
+
+    try {
+      cajaStorage.registrarIngreso(concepto, monto, undefined, metodoPago);
+      loadData(); // Recargar datos inmediatamente
+      setIngresoModalOpen(false);
+    } catch (error) {
+      console.error('Error al registrar ingreso:', error);
+      alert('Error al registrar el ingreso. Intenta nuevamente.');
+    }
+  };
+
   const handleDateChange = (days: number) => {
     setSelectedDate(dateUtils.addDays(selectedDate, days));
   };
@@ -141,6 +165,13 @@ export const Caja: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Actualizar
+          </button>
+          <button
+            onClick={() => setIngresoModalOpen(true)}
+            className="flex items-center px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Registrar Ingreso
           </button>
           <button
             onClick={handleRetiroClick}
@@ -412,6 +443,80 @@ export const Caja: React.FC = () => {
                     className="px-6 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700"
                   >
                     Autorizar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para ingreso */}
+      {ingresoModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setIngresoModalOpen(false)} />
+            
+            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+              <h3 className="text-lg font-medium text-gray-900 mb-6">
+                Registrar Ingreso
+              </h3>
+
+              <form onSubmit={handleIngreso} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Concepto del ingreso
+                  </label>
+                  <input
+                    type="text"
+                    name="concepto"
+                    defaultValue="Seña"
+                    placeholder="Ej: Seña, Venta de producto, Alquiler..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Monto
+                  </label>
+                  <input
+                    type="number"
+                    name="monto"
+                    min="1"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Método de pago
+                  </label>
+                  <select
+                    name="metodo_pago"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  >
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6">
+                  <button
+                    type="button"
+                    onClick={() => setIngresoModalOpen(false)}
+                    className="px-6 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
+                  >
+                    Registrar Ingreso
                   </button>
                 </div>
               </form>
