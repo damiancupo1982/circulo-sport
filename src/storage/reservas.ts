@@ -1,5 +1,5 @@
 import { Reserva } from '../types';
-import { cajaStorage } from './caja';   // 👈 agregado acá
+import { cajaStorage } from './caja';
 
 const STORAGE_KEY = 'circulo-sport-reservas';
 

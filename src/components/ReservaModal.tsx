@@ -48,6 +48,9 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
   const [showNuevoClienteForm, setShowNuevoClienteForm] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingReserva, setPendingReserva] = useState<Reserva | null>(null);
+  const [tipoReserva, setTipoReserva] = useState<'unica' | 'semanal'>('unica');
+  const [reservasSemanales, setReservasSemanales] = useState<Reserva[]>([]);
+  const [showWeeklyPreview, setShowWeeklyPreview] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -88,7 +91,60 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       setClientes(clientesStorage.getAll());
       setExtrasDisponibles(extrasStorage.getAll());
     }
+    setReservasSemanales([]);
+    setShowWeeklyPreview(false);
   }, [isOpen, reserva, defaultCancha, defaultFecha, defaultHoraInicio, defaultHoraFin]);
+
+  // Función para generar reservas semanales
+  const generateWeeklyReservations = (baseReserva: Reserva): Reserva[] => {
+    const reservas: Reserva[] = [];
+    const baseDate = new Date(baseReserva.fecha + 'T00:00:00');
+    const currentMonth = baseDate.getMonth();
+    const currentYear = baseDate.getFullYear();
+    
+    // Generar reservas para el resto del mes
+    let nextWeek = new Date(baseDate);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    
+    while (nextWeek.getMonth() === currentMonth && nextWeek.getFullYear() === currentYear) {
+      const fechaString = nextWeek.toISOString().split('T')[0];
+      
+      const nuevaReserva: Reserva = {
+        ...baseReserva,
+        id: `res-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${reservas.length}`,
+        fecha: fechaString,
+        created_at: new Date()
+      };
+      
+      reservas.push(nuevaReserva);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+    }
+    
+    return reservas;
+  };
+
+  // Función para verificar disponibilidad de reservas semanales
+  const checkWeeklyAvailability = (reservas: Reserva[]): { available: Reserva[], conflicts: Reserva[] } => {
+    const available: Reserva[] = [];
+    const conflicts: Reserva[] = [];
+    
+    reservas.forEach(reserva => {
+      const isAvailable = reservasStorage.isSlotAvailable(
+        reserva.cancha_id,
+        reserva.fecha,
+        reserva.hora_inicio,
+        reserva.hora_fin
+      );
+      
+      if (isAvailable) {
+        available.push(reserva);
+      } else {
+        conflicts.push(reserva);
+      }
+    });
+    
+    return { available, conflicts };
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,15 +171,41 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       created_at: reserva?.created_at || new Date()
     };
 
-    // Si cambia de pendiente a pagado, mostrar confirmación
-    if (reserva && reserva.metodo_pago === 'pendiente' && 
-        (formData.metodo_pago === 'efectivo' || formData.metodo_pago === 'transferencia')) {
-      setPendingReserva(reservaData);
-      setShowConfirmModal(true);
+    // Si es reserva semanal y no estamos editando una reserva existente
+    if (tipoReserva === 'semanal' && !reserva) {
+      const semanales = generateWeeklyReservations(reservaData);
+      const { available, conflicts } = checkWeeklyAvailability(semanales);
+      
+      setReservasSemanales([reservaData, ...available]);
+      
+      if (conflicts.length > 0) {
+        alert(`⚠️ Hay ${conflicts.length} fechas con conflictos que no se podrán reservar:\n${conflicts.map(r => r.fecha).join(', ')}`);
+      }
+      
+      setShowWeeklyPreview(true);
+      setTipoReserva('unica'); // Las reservas existentes siempre son únicas
     } else {
-      onSave(reservaData);
-      onClose();
+      // Lógica original para reserva única
+      if (reserva && reserva.metodo_pago === 'pendiente' && 
+          (formData.metodo_pago === 'efectivo' || formData.metodo_pago === 'transferencia')) {
+        setPendingReserva(reservaData);
+        setShowConfirmModal(true);
+      } else {
+        onSave(reservaData);
+        onClose();
+      }
     }
+  };
+
+  const handleConfirmWeeklyReservations = () => {
+    // Guardar todas las reservas semanales
+    reservasSemanales.forEach(reserva => {
+      onSave(reserva);
+    });
+    
+    setShowWeeklyPreview(false);
+    setReservasSemanales([]);
+    onClose();
   };
 
   const handleConfirmPayment = () => {
@@ -156,6 +238,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       created_at: new Date()
     };
 
+      setTipoReserva('unica');
     clientesStorage.save(cliente);
     setClientes(clientesStorage.getAll());
     handleClienteSelect(cliente);
@@ -403,6 +486,42 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
               </div>
             </div>
 
+            {/* Tipo de reserva - Solo para nuevas reservas */}
+            {!reserva && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tipo de reserva
+                </label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="unica"
+                      checked={tipoReserva === 'unica'}
+                      onChange={(e) => setTipoReserva(e.target.value as 'unica' | 'semanal')}
+                      className="mr-2"
+                    />
+                    Única
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="semanal"
+                      checked={tipoReserva === 'semanal'}
+                      onChange={(e) => setTipoReserva(e.target.value as 'unica' | 'semanal')}
+                      className="mr-2"
+                    />
+                    Semanal (resto del mes)
+                  </label>
+                </div>
+                {tipoReserva === 'semanal' && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    Se crearán reservas automáticamente cada semana hasta el final del mes
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Seña */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -545,7 +664,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                 type="submit"
                 className="px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
-                {reserva ? 'Actualizar' : 'Crear'} Reserva
+               {reserva ? 'Actualizar' : tipoReserva === 'semanal' ? 'Previsualizar Reservas' : 'Crear'} Reserva
               </button>
             </div>
           </form>
@@ -589,6 +708,86 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                     Crear
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de previsualización de reservas semanales */}
+      {showWeeklyPreview && (
+        <div className="fixed inset-0 z-60 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75" />
+            <div className="relative bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+              <h3 className="text-lg font-medium mb-4">Previsualización de Reservas Semanales</h3>
+              
+              <div className="mb-4">
+                <p className="text-gray-600">
+                  Se crearán <strong>{reservasSemanales.length}</strong> reservas:
+                </p>
+              </div>
+              
+              <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
+                {reservasSemanales.map((reserva, index) => {
+                  const cancha = CANCHAS.find(c => c.id === reserva.cancha_id);
+                  const fecha = new Date(reserva.fecha + 'T00:00:00');
+                  
+                  return (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <div className="font-medium">
+                          {fecha.toLocaleDateString('es-AR', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {cancha?.nombre} • {reserva.hora_inicio} - {reserva.hora_fin}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">${reserva.total.toLocaleString()}</div>
+                        <div className="text-sm text-gray-500">{reserva.metodo_pago}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center">
+                  <div className="text-blue-600 mr-3">ℹ️</div>
+                  <div>
+                    <div className="font-medium text-blue-900">
+                      Total: ${(reservasSemanales.reduce((sum, r) => sum + r.total, 0)).toLocaleString()}
+                    </div>
+                    <div className="text-sm text-blue-700">
+                      {reservasSemanales.filter(r => r.metodo_pago === 'pendiente').length > 0 && 
+                        'Las reservas pendientes no se registrarán en caja hasta confirmar el pago'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowWeeklyPreview(false);
+                    setReservasSemanales([]);
+                  }}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmWeeklyReservations}
+                  className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
+                >
+                  Confirmar {reservasSemanales.length} Reservas
+                </button>
               </div>
             </div>
           </div>
