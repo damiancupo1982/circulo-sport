@@ -5,10 +5,9 @@ import { Reserva, TransaccionCaja } from '../types';
 
 function toCSVRow(values: (string | number | null | undefined)[]) {
   return values
-    .map(v => {
+    .map((v) => {
       if (v === null || v === undefined) return '';
       const s = String(v).replace(/"/g, '""');
-      // envolver en comillas si contiene coma, comillas o salto de línea
       return /[",\n]/.test(s) ? `"${s}"` : s;
     })
     .join(',');
@@ -45,14 +44,27 @@ export const exportUtils = {
     const reservas = reservasStorage.getAll() as Reserva[];
 
     const header = [
-      'id', 'fecha', 'hora_inicio', 'hora_fin',
-      'cancha_id', 'cliente_id', 'cliente_nombre',
-      'metodo_pago', 'estado', 'precio_base', 'total',
-      'seña_texto', 'seña_monto', 'seña_metodo', 'seña_aplica_caja',
-      'extras_json', 'items_libres_json', 'created_at'
+      'id',
+      'fecha',
+      'hora_inicio',
+      'hora_fin',
+      'cancha_id',
+      'cliente_id',
+      'cliente_nombre',
+      'metodo_pago',
+      'estado',
+      'precio_base',
+      'total',
+      'seña_texto',
+      'seña_monto',
+      'seña_metodo',
+      'seña_aplica_caja',
+      'extras_json',
+      'items_libres_json',
+      'created_at',
     ];
 
-    const rows = reservas.map(r => [
+    const rows = reservas.map((r) => [
       r.id,
       r.fecha,
       r.hora_inicio,
@@ -64,13 +76,13 @@ export const exportUtils = {
       r.estado,
       r.precio_base,
       r.total,
-      r.seña || '',
-      r.seña_monto ?? 0,
-      r.seña_metodo || '',
-      r.seña_aplica_caja === false ? 'false' : 'true',
+      (r as any).seña || '',
+      (r as any).seña_monto ?? 0,
+      (r as any).seña_metodo || '',
+      (r as any).seña_aplica_caja === false ? 'false' : 'true',
       JSON.stringify(r.extras || []),
       JSON.stringify(r.items_libres || []),
-      r.created_at ? new Date(r.created_at).toISOString() : ''
+      r.created_at ? new Date(r.created_at).toISOString() : '',
     ]);
 
     const filename = `reservas_${formatDate(new Date())}.csv`;
@@ -80,9 +92,12 @@ export const exportUtils = {
   exportClientes() {
     const clientes = clientesStorage.getAll();
     const header = ['id', 'numero_socio', 'nombre', 'telefono', 'created_at'];
-    const rows = clientes.map(c => [
-      c.id, c.numero_socio, c.nombre, c.telefono,
-      c.created_at ? new Date(c.created_at).toISOString() : ''
+    const rows = clientes.map((c) => [
+      c.id,
+      c.numero_socio,
+      c.nombre,
+      c.telefono,
+      c.created_at ? new Date(c.created_at).toISOString() : '',
     ]);
     const filename = `clientes_${formatDate(new Date())}.csv`;
     downloadCSV(filename, header, rows);
@@ -91,11 +106,18 @@ export const exportUtils = {
   exportTransacciones() {
     const trans = cajaStorage.getAll();
     const header = [
-      'id', 'tipo', 'tipo_movimiento', 'concepto', 'monto',
-      'metodo_pago', 'fecha', 'hora', 'reserva_id'
+      'id',
+      'tipo',
+      'tipo_movimiento',
+      'concepto',
+      'monto',
+      'metodo_pago',
+      'fecha',
+      'hora',
+      'reserva_id',
     ];
 
-    const rows = trans.map(t => {
+    const rows = trans.map((t) => {
       const fecha = new Date(t.fecha_hora);
       return [
         t.id,
@@ -106,11 +128,59 @@ export const exportUtils = {
         t.metodo_pago || '',
         formatDate(fecha),
         fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-        t.reserva_id || ''
+        t.reserva_id || '',
       ];
     });
 
     const filename = `transacciones_${formatDate(new Date())}.csv`;
     downloadCSV(filename, header, rows);
-  }
+  },
+
+  /**
+   * Exporta exactamente el conjunto de reservas que le pases (p.ej., el listado filtrado).
+   * filenameSuffix se agrega al nombre del archivo para identificar el filtro.
+   */
+  exportReservasCustom(reservas: Reserva[], filenameSuffix = '') {
+    const header = [
+      'id',
+      'fecha',
+      'hora_inicio',
+      'hora_fin',
+      'cancha_id',
+      'cliente_id',
+      'cliente_nombre',
+      'metodo_pago',
+      'estado',
+      'precio_base',
+      'total',
+      'seña_texto',
+      'seña_monto',
+      'seña_metodo',
+      'seña_aplica_caja',
+      'created_at',
+    ];
+
+    const rows = reservas.map((r) => [
+      r.id,
+      r.fecha,
+      r.hora_inicio,
+      r.hora_fin,
+      r.cancha_id,
+      r.cliente_id,
+      r.cliente_nombre,
+      r.metodo_pago,
+      r.estado,
+      r.precio_base,
+      r.total,
+      (r as any).seña || '',
+      (r as any).seña_monto ?? 0,
+      (r as any).seña_metodo || '',
+      (r as any).seña_aplica_caja === false ? 'false' : 'true',
+      r.created_at ? new Date(r.created_at).toISOString() : '',
+    ]);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `reservas_filtrado${filenameSuffix}_${today}.csv`;
+    downloadCSV(filename, header, rows);
+  },
 };
