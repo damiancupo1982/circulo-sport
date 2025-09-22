@@ -52,51 +52,22 @@ export interface Reserva {
   extras: Extra[];
   items_libres: ItemLibre[];
   total: number;
-  // Incluimos 'pendiente' para alinear con el formulario
+  // Alineamos con el formulario
   estado: 'confirmada' | 'cancelada' | 'pendiente';
-  seña?: string; // Comentario sobre la seña
-  // NUEVO: seña real (monto) y método de esa seña cuando el pago general está "pendiente"
-  seña_monto?: number; // acumulada
+  seña?: string; // Comentario
+  seña_monto?: number; // acumulada (informativa en todas)
   seña_metodo?: 'efectivo' | 'transferencia';
+  // NUEVO: si true, la seña impacta en caja; si false, solo informativa
+  seña_aplica_caja?: boolean;
   created_at: Date;
 }
 
 export const CANCHAS: Cancha[] = [
-  {
-    id: 'futbol-5-1',
-    nombre: 'Fútbol 5',
-    tipo: 'futbol-5',
-    precio_base: 60000,
-    color: 'bg-blue-500'
-  },
-  {
-    id: 'futbol-8-1',
-    nombre: 'Fútbol 8',
-    tipo: 'futbol-8',
-    precio_base: 90000,
-    color: 'bg-green-500'
-  },
-  {
-    id: 'futbol-2-1',
-    nombre: 'Fútbol 2',
-    tipo: 'futbol-2',
-    precio_base: 15000,
-    color: 'bg-orange-500'
-  },
-  {
-    id: 'padel-1',
-    nombre: 'Pádel 1',
-    tipo: 'padel',
-    precio_base: 45000,
-    color: 'bg-purple-500'
-  },
-  {
-    id: 'padel-2',
-    nombre: 'Pádel 2',
-    tipo: 'padel',
-    precio_base: 45000,
-    color: 'bg-pink-500'
-  }
+  { id: 'futbol-5-1', nombre: 'Fútbol 5', tipo: 'futbol-5', precio_base: 60000, color: 'bg-blue-500' },
+  { id: 'futbol-8-1', nombre: 'Fútbol 8', tipo: 'futbol-8', precio_base: 90000, color: 'bg-green-500' },
+  { id: 'futbol-2-1', nombre: 'Fútbol 2', tipo: 'futbol-2', precio_base: 15000, color: 'bg-orange-500' },
+  { id: 'padel-1',   nombre: 'Pádel 1',  tipo: 'padel',    precio_base: 45000, color: 'bg-purple-500' },
+  { id: 'padel-2',   nombre: 'Pádel 2',  tipo: 'padel',    precio_base: 45000, color: 'bg-pink-500' }
 ];
 
 export interface ExtraDisponible {
@@ -106,8 +77,8 @@ export interface ExtraDisponible {
 }
 
 export const HORARIOS_DISPONIBLES = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-  '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
-  '20:00', '20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'
+  '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30',
+  '16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30',
+  '20:00','20:30','21:00','21:30','22:00','22:30','23:00','23:30'
 ];
