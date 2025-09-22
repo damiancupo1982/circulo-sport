@@ -30,7 +30,32 @@ export const Reservas: React.FC = () => {
     setReservas(reservasStorage.getByDate(dateString));
   };
 
+  const registerDepositDeltaIfAny = (newReserva: Reserva, prevReserva?: Reserva) => {
+    const prevDeposit = Math.max(0, prevReserva?.seña_monto || 0);
+    const newDeposit = Math.max(0, newReserva.seña_monto || 0);
+
+    const delta = newDeposit - prevDeposit;
+    if (newReserva.metodo_pago === 'pendiente' && delta > 0) {
+      const concepto = `Seña Reserva ${CANCHAS.find(c => c.id === newReserva.cancha_id)?.nombre} - ${newReserva.cliente_nombre}`;
+      cajaStorage.registrarIngreso(concepto, delta, newReserva.id, newReserva.seña_metodo || 'efectivo');
+    }
+  };
+
+  const registerBalanceIfConfirming = (newReserva: Reserva, prevReserva?: Reserva) => {
+    const wasPending = prevReserva?.metodo_pago === 'pendiente';
+    const nowConfirmed = newReserva.metodo_pago !== 'pendiente';
+    if (!wasPending || !nowConfirmed) return;
+
+    const deposit = Math.max(0, newReserva.seña_monto || 0);
+    const balance = Math.max(0, (newReserva.total || 0) - deposit);
+    if (balance > 0) {
+      const concepto = `Reserva ${CANCHAS.find(c => c.id === newReserva.cancha_id)?.nombre} - ${newReserva.cliente_nombre}`;
+      cajaStorage.registrarIngreso(concepto, balance, newReserva.id, newReserva.metodo_pago);
+    }
+  };
+
   const handleSaveReserva = (reserva: Reserva) => {
+    // Validación de disponibilidad
     if (!reservasStorage.isSlotAvailable(
       reserva.cancha_id,
       reserva.fecha,
@@ -42,16 +67,14 @@ export const Reservas: React.FC = () => {
       return;
     }
 
-    reservasStorage.save(reserva);
+    // 1) Si está pendiente, registrar delta de seña (si aumentó)
+    registerDepositDeltaIfAny(reserva, selectedReserva);
 
-    if (reserva.metodo_pago !== 'pendiente') {
-      const concepto = `Reserva ${CANCHAS.find(c => c.id === reserva.cancha_id)?.nombre} - ${reserva.cliente_nombre}`;
-      if (selectedReserva && selectedReserva.metodo_pago === 'pendiente') {
-        cajaStorage.registrarIngreso(concepto, reserva.total, reserva.id, reserva.metodo_pago);
-      } else if (!selectedReserva) {
-        cajaStorage.registrarIngreso(concepto, reserva.total, reserva.id, reserva.metodo_pago);
-      }
-    }
+    // 2) Si se confirma el pago ahora, registrar saldo (total - seña)
+    registerBalanceIfConfirming(reserva, selectedReserva);
+
+    // Guardar la reserva
+    reservasStorage.save(reserva);
 
     loadReservas();
     setSelectedReserva(undefined);
@@ -106,12 +129,10 @@ export const Reservas: React.FC = () => {
     const [hours, minutes] = horaInicio.split(':').map(Number);
     let newMinutes = minutes + 30;
     let newHours = hours;
-
     if (newMinutes >= 60) {
       newMinutes -= 60;
       newHours += 1;
     }
-
     return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
   };
 
@@ -188,36 +209,27 @@ export const Reservas: React.FC = () => {
         </button>
       </div>
 
-      {/* Grilla de reservas */}
+      {/* Grilla */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <div className="min-w-max">
-            {/* Header */}
             <div
               className="grid bg-gray-50 border-b"
-              style={{
-                gridTemplateColumns: `200px repeat(${HORARIOS_DISPONIBLES.length}, 60px)`
-              }}
+              style={{ gridTemplateColumns: `200px repeat(${HORARIOS_DISPONIBLES.length}, 60px)` }}
             >
               <div className="p-3 font-medium text-gray-900 border-r">Cancha</div>
               {HORARIOS_DISPONIBLES.map(hora => (
-                <div
-                  key={hora}
-                  className="p-2 text-xs font-medium text-gray-700 text-center border-r whitespace-nowrap"
-                >
+                <div key={hora} className="p-2 text-xs font-medium text-gray-700 text-center border-r whitespace-nowrap">
                   {hora}
                 </div>
               ))}
             </div>
 
-            {/* Filas de canchas */}
             {CANCHAS.map(cancha => (
               <div
                 key={cancha.id}
                 className="grid border-b"
-                style={{
-                  gridTemplateColumns: `200px repeat(${HORARIOS_DISPONIBLES.length}, 60px)`
-                }}
+                style={{ gridTemplateColumns: `200px repeat(${HORARIOS_DISPONIBLES.length}, 60px)` }}
               >
                 <div className="p-3 font-medium text-gray-900 border-r bg-gray-50">
                   <div className={`w-3 h-3 rounded-full ${cancha.color} inline-block mr-2`} />
@@ -240,8 +252,11 @@ export const Reservas: React.FC = () => {
                             ${reserva.total.toLocaleString()}
                           </div>
                           {reserva.metodo_pago === 'pendiente' && (
-                            <div className="text-xs text-orange-600 font-medium">
+                            <div className="flex items-center gap-1 text-xs text-orange-700 font-medium">
                               PEND
+                              {Math.max(0, reserva.seña_monto || 0) > 0 && (
+                                <span className="ml-1">• Seña ${Number(reserva.seña_monto).toLocaleString()}</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -255,7 +270,7 @@ export const Reservas: React.FC = () => {
         </div>
       </div>
 
-      {/* Lista de reservas del día */}
+      {/* Lista del día */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -275,6 +290,9 @@ export const Reservas: React.FC = () => {
                   bgColor = 'bg-green-50 border-l-4 border-green-400';
                 }
 
+                const deposit = Math.max(0, reserva.seña_monto || 0);
+                const saldo = Math.max(0, (reserva.total || 0) - deposit);
+
                 return (
                   <div key={reserva.id} className={`flex items-center justify-between p-4 rounded-lg ${bgColor}`}>
                     <div className="flex items-center space-x-4">
@@ -287,11 +305,10 @@ export const Reservas: React.FC = () => {
                           {reserva.hora_inicio} - {reserva.hora_fin} • ${reserva.total.toLocaleString()}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {reserva.metodo_pago === 'pendiente' ? 'PENDIENTE DE PAGO' :
-                            reserva.estado === 'confirmada' ? 'CONFIRMADA' : reserva.metodo_pago} • {reserva.estado}
-                          {reserva.seña && (
-                            <span className="ml-2 text-blue-600">• {reserva.seña}</span>
-                          )}
+                          {reserva.metodo_pago === 'pendiente'
+                            ? `PENDIENTE • Seña $${deposit.toLocaleString()} • Saldo $${saldo.toLocaleString()}`
+                            : `CONFIRMADA • ${reserva.metodo_pago.toUpperCase()}`}
+                          {reserva.seña && <span className="ml-2 text-blue-600">• {reserva.seña}</span>}
                         </div>
                       </div>
                     </div>
@@ -334,7 +351,7 @@ export const Reservas: React.FC = () => {
         defaultHoraFin={modalDefaults.horaFin}
       />
 
-      {/* Modal para confirmar eliminación */}
+      {/* Modal de eliminación */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
@@ -351,13 +368,13 @@ export const Reservas: React.FC = () => {
               </div>
 
               <p className="text-gray-600 mb-4">
-                ¿Estás seguro de que quieres eliminar la reserva de <strong>{reservaToDelete?.cliente_nombre}</strong>?
+                ¿Estás seguro de que querés eliminar la reserva de <strong>{reservaToDelete?.cliente_nombre}</strong>?
               </p>
 
               <form onSubmit={handleConfirmDelete} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ingrese la contraseña de administrador para confirmar
+                    Ingresá la contraseña de administrador para confirmar
                   </label>
                   <input
                     type="password"
