@@ -40,7 +40,9 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
     estado: 'confirmada' as 'confirmada' | 'pendiente' | 'cancelada',
     seña: '',
     seña_monto: 0,
-    seña_metodo: 'efectivo' as 'efectivo' | 'transferencia'
+    seña_metodo: 'efectivo' as 'efectivo' | 'transferencia',
+    // por defecto: si es única, la seña aplica a caja; si es semanal, solo la 1ra aplicará
+    seña_aplica_caja: true
   });
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -72,7 +74,8 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
           estado: reserva.estado ?? (reserva.metodo_pago === 'pendiente' ? 'pendiente' : 'confirmada'),
           seña: reserva.seña || '',
           seña_monto: reserva.seña_monto || 0,
-          seña_metodo: reserva.seña_metodo || 'efectivo'
+          seña_metodo: reserva.seña_metodo || 'efectivo',
+          seña_aplica_caja: reserva.seña_aplica_caja !== false
         });
         setClienteQuery(reserva.cliente_nombre);
       } else {
@@ -91,7 +94,8 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
           estado: 'confirmada',
           seña: '',
           seña_monto: 0,
-          seña_metodo: 'efectivo'
+          seña_metodo: 'efectivo',
+          seña_aplica_caja: true
         });
         setClienteQuery('');
       }
@@ -102,9 +106,9 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
     setShowWeeklyPreview(false);
   }, [isOpen, reserva, defaultCancha, defaultFecha, defaultHoraInicio, defaultHoraFin]);
 
-  // Genera reservas semanales para el resto del mes
+  // Genera reservas semanales (resto del mes)
   const generateWeeklyReservations = (baseReserva: Reserva): Reserva[] => {
-    const reservas: Reserva[] = [];
+    const out: Reserva[] = [];
     const baseDate = new Date(baseReserva.fecha + 'T00:00:00');
     const currentMonth = baseDate.getMonth();
     const currentYear = baseDate.getFullYear();
@@ -114,16 +118,18 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
     while (nextWeek.getMonth() === currentMonth && nextWeek.getFullYear() === currentYear) {
       const fechaString = nextWeek.toISOString().split('T')[0];
-      const nuevaReserva: Reserva = {
+      // Copiamos TODO (incluida seña para mostrarla), pero NO aplica a caja
+      const nueva: Reserva = {
         ...baseReserva,
-        id: `res-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${reservas.length}`,
+        id: `res-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${out.length}`,
         fecha: fechaString,
+        seña_aplica_caja: false, // <- informativa, no impacta caja
         created_at: new Date()
       };
-      reservas.push(nuevaReserva);
+      out.push(nueva);
       nextWeek.setDate(nextWeek.getDate() + 7);
     }
-    return reservas;
+    return out;
   };
 
   const checkWeeklyAvailability = (reservas: Reserva[]): { available: Reserva[], conflicts: Reserva[] } => {
@@ -146,7 +152,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       formData.extras.reduce((sum, e) => sum + (e.precio * e.cantidad), 0) +
       formData.items_libres.reduce((sum, i) => sum + i.precio, 0);
 
-    const reservaData: Reserva = {
+    const baseReserva: Reserva = {
       id: reserva?.id || `res-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       cancha_id: formData.cancha_id,
       cliente_id: formData.cliente_id,
@@ -163,17 +169,15 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       seña: formData.seña.trim() || undefined,
       seña_monto: Math.max(0, Number(formData.seña_monto) || 0),
       seña_metodo: formData.seña_metodo,
+      seña_aplica_caja: true, // la primera sí impacta en caja
       created_at: reserva?.created_at || new Date()
     };
 
-    // Reserva semanal si es nueva
     if (tipoReserva === 'semanal' && !reserva) {
-      const semanales = generateWeeklyReservations(reservaData);
-      const { available, conflicts } = checkWeeklyAvailability(semanales);
-      // Incluimos la base también
-      const all = [reservaData, ...available];
-      // NOTA: Las señas de reservas semanales no se registran acá; se registran al guardar en la página
-      setReservasSemanales(all);
+      const repeticiones = generateWeeklyReservations(baseReserva);
+      const { available, conflicts } = checkWeeklyAvailability(repeticiones);
+      // Base + repeticiones disponibles
+      setReservasSemanales([baseReserva, ...available]);
 
       if (conflicts.length > 0) {
         alert(`⚠️ Hay ${conflicts.length} fechas con conflictos que no se podrán reservar:\n${conflicts.map(r => r.fecha).join(', ')}`);
@@ -181,16 +185,16 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       setShowWeeklyPreview(true);
       setTipoReserva('unica');
     } else {
-      // Reserva única
+      // Reserva única / edición
       if (
         reserva &&
         reserva.metodo_pago === 'pendiente' &&
         (formData.metodo_pago === 'efectivo' || formData.metodo_pago === 'transferencia')
       ) {
-        setPendingReserva(reservaData);
+        setPendingReserva(baseReserva);
         setShowConfirmModal(true);
       } else {
-        onSave(reservaData);
+        onSave(baseReserva);
         onClose();
       }
     }
@@ -212,9 +216,12 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
     }
   };
 
-  const filteredClientes = clientes.filter(c =>
-    c.nombre.toLowerCase().includes(clienteQuery.toLowerCase())
-  );
+  const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
+  useEffect(() => {
+    setFilteredClientes(
+      clientes.filter(c => c.nombre.toLowerCase().includes(clienteQuery.toLowerCase()))
+    );
+  }, [clienteQuery, clientes]);
 
   const handleClienteSelect = (cliente: Cliente) => {
     setFormData(prev => ({
@@ -233,10 +240,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       precio: extra.precio,
       cantidad: 1
     };
-    setFormData(prev => ({
-      ...prev,
-      extras: [...prev.extras, nuevoExtra]
-    }));
+    setFormData(prev => ({ ...prev, extras: [...prev.extras, nuevoExtra] }));
   };
 
   const actualizarExtra = (id: string, cantidad: number) => {
@@ -247,10 +251,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
   };
 
   const eliminarExtra = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      extras: prev.extras.filter(e => e.id !== id)
-    }));
+    setFormData(prev => ({ ...prev, extras: prev.extras.filter(e => e.id !== id) }));
   };
 
   const agregarItemLibre = () => {
@@ -259,26 +260,18 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
       descripcion: '',
       precio: 0
     };
-    setFormData(prev => ({
-      ...prev,
-      items_libres: [...prev.items_libres, nuevoItem]
-    }));
+    setFormData(prev => ({ ...prev, items_libres: [...prev.items_libres, nuevoItem] }));
   };
 
   const actualizarItemLibre = (id: string, field: 'descripcion' | 'precio', value: string | number) => {
     setFormData(prev => ({
       ...prev,
-      items_libres: prev.items_libres.map(i =>
-        i.id === id ? { ...i, [field]: value } : i
-      )
+      items_libres: prev.items_libres.map(i => i.id === id ? { ...i, [field]: value } : i)
     }));
   };
 
   const eliminarItemLibre = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      items_libres: prev.items_libres.filter(i => i.id !== id)
-    }));
+    setFormData(prev => ({ ...prev, items_libres: prev.items_libres.filter(i => i.id !== id) }));
   };
 
   const total = formData.precio_base +
@@ -306,9 +299,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Cancha */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cancha
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cancha</label>
                 <select
                   value={formData.cancha_id}
                   onChange={(e) => {
@@ -323,18 +314,14 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                   required
                 >
                   {CANCHAS.map(cancha => (
-                    <option key={cancha.id} value={cancha.id}>
-                      {cancha.nombre}
-                    </option>
+                    <option key={cancha.id} value={cancha.id}>{cancha.nombre}</option>
                   ))}
                 </select>
               </div>
 
               {/* Cliente */}
               <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cliente
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cliente</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -382,9 +369,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
               {/* Fecha */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Fecha
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Fecha</label>
                 <input
                   type="date"
                   value={formData.fecha}
@@ -397,9 +382,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
               {/* Horarios */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Hora inicio
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicio</label>
                   <input
                     type="time"
                     value={formData.hora_inicio}
@@ -409,9 +392,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Hora fin
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora fin</label>
                   <input
                     type="time"
                     value={formData.hora_fin}
@@ -424,9 +405,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
               {/* Método de pago */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Método de pago
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
                 <select
                   value={formData.metodo_pago}
                   onChange={(e) => {
@@ -443,13 +422,12 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
                 </select>
-                {/* Campos de seña monetaria cuando está Pendiente */}
+
+                {/* Seña monetaria cuando está Pendiente */}
                 {formData.metodo_pago === 'pendiente' && (
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Seña (monto)
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Seña (monto)</label>
                       <input
                         type="number"
                         value={formData.seña_monto}
@@ -459,9 +437,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Método de seña
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Método de seña</label>
                       <select
                         value={formData.seña_metodo}
                         onChange={(e) => setFormData(prev => ({ ...prev, seña_metodo: e.target.value as 'efectivo' | 'transferencia' }))}
@@ -477,9 +453,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
               {/* Precio base */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Precio base
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Precio base</label>
                 <input
                   type="number"
                   value={formData.precio_base}
@@ -494,9 +468,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
             {/* Tipo de reserva - Solo nuevas */}
             {!reserva && (
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tipo de reserva
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de reserva</label>
                 <div className="flex space-x-4">
                   <label className="flex items-center">
                     <input
@@ -521,7 +493,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                 </div>
                 {tipoReserva === 'semanal' && (
                   <p className="text-sm text-blue-600 mt-1">
-                    Se crearán reservas automáticamente cada semana hasta el final del mes
+                    Se crearán reservas automáticamente cada semana hasta el final del mes.
                   </p>
                 )}
               </div>
@@ -529,18 +501,16 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
             {/* Seña comentarios */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Seña / Comentarios
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Seña / Comentarios</label>
               <textarea
                 value={formData.seña}
                 onChange={(e) => setFormData(prev => ({ ...prev, seña: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 rows={2}
-                placeholder="Ej: Cliente habitual, trae equipo, etc."
+                placeholder="Ej: cliente habitual, etc."
               />
               <p className="text-xs text-gray-500 mt-1">
-                Este campo es informativo (no afecta cálculos). El monto real de seña se ingresa arriba.
+                La seña (monto) se mostrará en todas las repeticiones, pero solo impactará en caja en la primera.
               </p>
             </div>
 
@@ -646,29 +616,22 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
               </div>
               {formData.metodo_pago === 'pendiente' && (
                 <div className="text-sm text-yellow-700 mt-1">
-                  ⚠️ La reserva quedará pendiente. Si cargás una seña, se registrará en caja al guardar.
+                  ⚠️ Pendiente. Si cargás una seña, solo la primera repetición impactará en caja.
                 </div>
               )}
               {formData.estado === 'confirmada' && formData.metodo_pago !== 'pendiente' && (
                 <div className="text-sm text-green-700 mt-1">
-                  ✅ Reserva confirmada y se registrará el saldo en caja
+                  ✅ Confirmada: se registrará el saldo en caja
                 </div>
               )}
             </div>
 
             {/* Botones */}
             <div className="flex justify-end gap-3 pt-6">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
+              <button type="button" onClick={onClose} className="px-6 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
                 Cancelar
               </button>
-              <button
-                type="submit"
-                className="px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
+              <button type="submit" className="px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700">
                 {reserva ? 'Actualizar' : tipoReserva === 'semanal' ? 'Previsualizar Reservas' : 'Crear Reserva'}
               </button>
             </div>
@@ -676,7 +639,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
         </div>
       </div>
 
-      {/* Modal para nuevo cliente */}
+      {/* Nuevo cliente */}
       {showNuevoClienteForm && (
         <div className="fixed inset-0 z-60 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
@@ -699,10 +662,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
                 <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowNuevoClienteForm(false)}
-                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
+                  <button onClick={() => setShowNuevoClienteForm(false)} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
                     Cancelar
                   </button>
                   <button
@@ -734,7 +694,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
         </div>
       )}
 
-      {/* Previsualización semanal */}
+      {/* Vista previa semanal */}
       {showWeeklyPreview && (
         <div className="fixed inset-0 z-60 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
@@ -744,7 +704,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
 
               <div className="mb-4">
                 <p className="text-gray-600">
-                  Se crearán <strong>{reservasSemanales.length}</strong> reservas:
+                  Se crearán <strong>{reservasSemanales.length}</strong> reservas (la seña impacta solo en la primera).
                 </p>
               </div>
 
@@ -756,9 +716,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                     <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
                         <div className="font-medium">
-                          {fecha.toLocaleDateString('es-AR', {
-                            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                          })}
+                          {fecha.toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </div>
                         <div className="text-sm text-gray-600">
                           {cancha?.nombre} • {r.hora_inicio} - {r.hora_fin}
@@ -766,33 +724,20 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                       </div>
                       <div className="text-right">
                         <div className="font-medium">${r.total.toLocaleString()}</div>
-                        <div className="text-sm text-gray-500">{r.metodo_pago}</div>
+                        <div className="text-xs text-gray-500">
+                          {r.seña_aplica_caja ? 'Seña aplica a caja' : 'Seña informativa'}
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <div className="font-medium text-blue-900">
-                  Total: {(reservasSemanales.reduce((sum, r) => sum + r.total, 0)).toLocaleString('es-AR')}
-                </div>
-                <div className="text-sm text-blue-700">
-                  Las reservas pendientes se registrarán en caja solo por el monto de seña que indiques.
-                </div>
-              </div>
-
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => { setShowWeeklyPreview(false); setReservasSemanales([]); }}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
+                <button onClick={() => { setShowWeeklyPreview(false); setReservasSemanales([]); }} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
                   Cancelar
                 </button>
-                <button
-                  onClick={handleConfirmWeeklyReservations}
-                  className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
-                >
+                <button onClick={handleConfirmWeeklyReservations} className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700">
                   Confirmar {reservasSemanales.length} Reservas
                 </button>
               </div>
@@ -801,7 +746,7 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
         </div>
       )}
 
-      {/* Confirmación de pasar de pendiente a pago */}
+      {/* Confirmar pasar a pago */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-60 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
@@ -813,28 +758,14 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({
                 </div>
                 <h3 className="text-lg font-medium text-gray-900">Confirmar Pago</h3>
               </div>
-
               <p className="text-gray-600 mb-6">
-                ¿Confirmás que se recibió el pago por <strong>{pendingReserva?.metodo_pago}</strong>?
+                Se registrará en caja el <strong>saldo</strong> (total menos seña acumulada).
               </p>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
-                <p className="text-sm text-yellow-800">
-                  Se registrará en caja el <strong>saldo</strong> (total menos seña acumulada).
-                </p>
-              </div>
-
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => { setShowConfirmModal(false); setPendingReserva(null); }}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
+                <button onClick={() => { setShowConfirmModal(false); setPendingReserva(null); }} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
                   Cancelar
                 </button>
-                <button
-                  onClick={handleConfirmPayment}
-                  className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
-                >
+                <button onClick={handleConfirmPayment} className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700">
                   Confirmar Pago
                 </button>
               </div>
