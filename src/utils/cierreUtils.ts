@@ -13,26 +13,32 @@ function n(x: any): number {
   const v = Number(x);
   return Number.isFinite(v) ? v : 0;
 }
+function fmtLocalDate(d: Date) {
+  // fecha local legible YYYY-MM-DD (sin UTC shift visual)
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz * 60000);
+  return local.toISOString().slice(0, 10);
+}
 
 export const cierreUtils = {
   generarCierre(usuario: string, fechaInicio: Date, fechaFin: Date): CierreTurno {
-    // 1) Traer todas las transacciones; normalizar tipos
+    // 1) Transacciones normalizadas
     const todasTransacciones = (cajaStorage.getAll() || []).map((t: any) => ({
       ...t,
-      fecha_hora: toDateSafe(t.fecha_hora), // <- CLAVE: siempre Date
+      fecha_hora: toDateSafe(t.fecha_hora),
       monto: n(t.monto),
     }));
 
     const ini = fechaInicio.getTime();
     const fin = fechaFin.getTime();
 
-    // 2) Filtrar por rango con getTime() (evita comparar Date vs string)
+    // 2) Filtro inclusivo por rango (local-safe: trabajamos con Date reales)
     const transaccionesPeriodo = todasTransacciones.filter((t: any) => {
       const ts = t.fecha_hora.getTime();
       return Number.isFinite(ts) && ts >= ini && ts <= fin;
     });
 
-    // 3) Cargar reservas relacionadas para enriquecer detalle
+    // 3) Reservas relacionadas
     const reservaIds = transaccionesPeriodo
       .filter((t: any) => !!t.reserva_id)
       .map((t: any) => t.reserva_id);
@@ -40,11 +46,11 @@ export const cierreUtils = {
     const todasReservas: Reserva[] = reservasStorage.getAll() || [];
     const reservasPeriodo = todasReservas.filter((r: any) => reservaIds.includes(r.id));
 
-    // 4) Calcular totales por método
+    // 4) Totales por método
     const totales = {
       efectivo: 0,
       transferencias: 0,
-      expensas: 0, // reservado para futuro
+      expensas: 0, // reservado por si lo activás luego
       total_general: 0,
     };
 
@@ -55,25 +61,23 @@ export const cierreUtils = {
         else if (t.metodo_pago === 'expensa') totales.expensas += n(t.monto);
         totales.total_general += n(t.monto);
       } else if (t.tipo === 'retiro') {
-        totales.efectivo -= n(t.monto);       // retiro sale de efectivo
+        // Retiros siempre descuentan de efectivo
+        totales.efectivo -= n(t.monto);
         totales.total_general -= n(t.monto);
       }
     });
 
-    // 5) Detalle de transacciones (todas las de ingreso: con o sin reserva)
+    // 5) Detalle de transacciones (solo ingresos para "ventas")
     const transaccionesDetalle = transaccionesPeriodo
       .filter((t: any) => t.tipo === 'ingreso')
       .map((t: any) => {
-        const fechaStr =
-          t.fecha_hora instanceof Date
-            ? t.fecha_hora.toISOString().split('T')[0]
-            : 'N/A';
+        const fechaLocal = t.fecha_hora instanceof Date ? fmtLocalDate(t.fecha_hora) : 'N/A';
 
         if (t.reserva_id) {
           const r = todasReservas.find((rr: any) => rr.id === t.reserva_id);
           if (!r) {
             return {
-              fecha: fechaStr,
+              fecha: fechaLocal,
               cliente_nombre: t.cliente_nombre || 'Cliente no encontrado',
               cancha: 'N/A',
               horario_desde: 'N/A',
@@ -84,7 +88,7 @@ export const cierreUtils = {
           }
           const cancha = CANCHAS.find(c => c.id === r.cancha_id);
           return {
-            fecha: r.fecha || fechaStr,
+            fecha: r.fecha || fechaLocal,
             cliente_nombre: r.cliente_nombre || t.cliente_nombre || 'Cliente',
             cancha: cancha?.nombre || r.cancha_id,
             horario_desde: r.hora_inicio || '',
@@ -94,9 +98,9 @@ export const cierreUtils = {
           };
         }
 
-        // Ingreso manual (sin reserva)
+        // Ingreso manual
         return {
-          fecha: fechaStr,
+          fecha: fechaLocal,
           cliente_nombre: t.cliente_nombre || t.concepto || 'Ingreso',
           cancha: 'N/A',
           horario_desde: '',
@@ -111,7 +115,6 @@ export const cierreUtils = {
       Math.floor((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60))
     );
 
-    // 6) Construir objeto cierre
     const cierre: CierreTurno = {
       id: `cierre-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       usuario,
@@ -172,7 +175,7 @@ export const cierreUtils = {
 
     const csvContent = [
       `Cierre de Turno - ${cierre.usuario}`,
-      `Período: ${cierre.fecha_inicio.toLocaleString()} - ${cierre.fecha_fin.toLocaleString()}`,
+      `Período: ${cierre.fecha_inicio.toLocaleString('es-AR')} - ${cierre.fecha_fin.toLocaleString('es-AR')}`,
       `Total Efectivo: $${cierre.totales.efectivo.toLocaleString()}`,
       `Total Transferencias: $${cierre.totales.transferencias.toLocaleString()}`,
       `Total Expensas: $${cierre.totales.expensas.toLocaleString()}`,
@@ -187,7 +190,7 @@ export const cierreUtils = {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `cierre_turno_${cierre.usuario}_${cierre.fecha_inicio.toISOString().split('T')[0]}.csv`;
+    link.download = `cierre_turno_${cierre.usuario}_${fmtLocalDate(cierre.fecha_inicio)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   },
