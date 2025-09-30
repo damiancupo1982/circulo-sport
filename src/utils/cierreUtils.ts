@@ -61,7 +61,7 @@ export const cierreUtils = {
       usuario,
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin,
-      duracion_minutos,
+      duracion_minutos: duracionMinutos,
       totales,
       cantidad_ventas: reservasPeriodo.length,
       transacciones: transaccionesDetalle,
