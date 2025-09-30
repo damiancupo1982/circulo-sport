@@ -2,17 +2,24 @@ import { CierreTurno } from '../types';
 
 const STORAGE_KEY = 'circulo-sport-cierres';
 
+/** Parse seguro a Date (acepta Date o string ISO) */
+function toDateSafe(v: any): Date {
+  if (v instanceof Date) return v;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? new Date('Invalid') : d;
+}
+
 export const cierresStorage = {
   getAll(): CierreTurno[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (!data) return [];
       const cierres = JSON.parse(data);
-      return cierres.map((c: any) => ({
+      return (cierres as any[]).map((c: any) => ({
         ...c,
-        fecha_inicio: new Date(c.fecha_inicio),
-        fecha_fin: new Date(c.fecha_fin),
-        created_at: new Date(c.created_at)
+        fecha_inicio: toDateSafe(c.fecha_inicio),
+        fecha_fin: toDateSafe(c.fecha_fin),
+        created_at: toDateSafe(c.created_at),
       }));
     } catch (error) {
       console.error('Error loading cierres:', error);
@@ -24,13 +31,20 @@ export const cierresStorage = {
     try {
       const cierres = this.getAll();
       const existingIndex = cierres.findIndex(c => c.id === cierre.id);
-      
+
+      const cierreToSave: CierreTurno = {
+        ...cierre,
+        fecha_inicio: toDateSafe(cierre.fecha_inicio),
+        fecha_fin: toDateSafe(cierre.fecha_fin),
+        created_at: toDateSafe(cierre.created_at || new Date()),
+      };
+
       if (existingIndex >= 0) {
-        cierres[existingIndex] = cierre;
+        cierres[existingIndex] = cierreToSave;
       } else {
-        cierres.push(cierre);
+        cierres.push(cierreToSave);
       }
-      
+
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cierres));
     } catch (error) {
       console.error('Error saving cierre:', error);
@@ -39,14 +53,17 @@ export const cierresStorage = {
   },
 
   getByDateRange(desde: Date, hasta: Date): CierreTurno[] {
-    return this.getAll().filter(c => 
-      c.fecha_inicio >= desde && c.fecha_inicio <= hasta
-    );
+    const ini = desde.getTime();
+    const fin = hasta.getTime();
+    return this.getAll().filter(c => {
+      const ts = c.fecha_inicio.getTime();
+      return ts >= ini && ts <= fin;
+    });
   },
 
   getByUsuario(usuario: string): CierreTurno[] {
-    return this.getAll().filter(c => 
-      c.usuario.toLowerCase().includes(usuario.toLowerCase())
+    return this.getAll().filter(c =>
+      (c.usuario || '').toLowerCase().includes(usuario.toLowerCase())
     );
   },
 
