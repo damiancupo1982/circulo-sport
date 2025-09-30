@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, TrendingUp, TrendingDown, Calendar, Plus, Minus,
-  CreditCard, Banknote, Lock, ChevronLeft, ChevronRight, RefreshCw, Tag
+  CreditCard, Banknote, Lock, ChevronLeft, ChevronRight, RefreshCw, Tag, 
+  LogOut, History, X
 } from 'lucide-react';
 import { TransaccionCaja } from '../types';
 import { cajaStorage } from '../storage/caja';
 import { dateUtils } from '../utils/dates';
+import { cierreUtils } from '../utils/cierreUtils';
+import { cierresStorage } from '../storage/cierres';
+import { CierreTurnoModal } from '../components/CierreTurno';
+import { ConsultaCierres } from '../components/ConsultaCierres';
 
 export const Caja: React.FC = () => {
   const [transacciones, setTransacciones] = useState<TransaccionCaja[]>([]);
@@ -15,6 +20,12 @@ export const Caja: React.FC = () => {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false);
+  const [cierreModalOpen, setCierreModalOpen] = useState(false);
+  const [consultaCierresOpen, setConsultaCierresOpen] = useState(false);
+  const [usuario, setUsuario] = useState('');
+  const [fechaInicioTurno, setFechaInicioTurno] = useState<Date>(new Date());
+  const [cierreGenerado, setCierreGenerado] = useState<any>(null);
+  const [showCierreModal, setShowCierreModal] = useState(false);
   const [totales, setTotales] = useState({
     totalCaja: 0,
     totalEfectivo: 0,
@@ -150,6 +161,32 @@ export const Caja: React.FC = () => {
     setSelectedDate(dateUtils.addDays(selectedDate, days));
   };
 
+  const handleCerrarTurno = (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget as HTMLFormElement);
+    const usuarioTurno = formData.get('usuario') as string;
+    
+    if (!usuarioTurno.trim()) {
+      alert('El nombre del usuario es obligatorio');
+      return;
+    }
+
+    const fechaFin = new Date();
+    const cierre = cierreUtils.generarCierre(usuarioTurno, fechaInicioTurno, fechaFin);
+    
+    try {
+      cierresStorage.save(cierre);
+      setCierreGenerado(cierre);
+      setShowCierreModal(true);
+      setCierreModalOpen(false);
+      setUsuario('');
+      setFechaInicioTurno(new Date());
+    } catch (error) {
+      console.error('Error al guardar cierre:', error);
+      alert('Error al generar el cierre de turno');
+    }
+  };
+
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(amount);
 
@@ -182,6 +219,20 @@ export const Caja: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Actualizar
+          </button>
+          <button
+            onClick={() => setConsultaCierresOpen(true)}
+            className="flex items-center px-4 py-2 text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+          >
+            <History className="w-4 h-4 mr-2" />
+            Consultar Cierres
+          </button>
+          <button
+            onClick={() => setCierreModalOpen(true)}
+            className="flex items-center px-4 py-2 text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Cerrar Turno
           </button>
           <button
             onClick={() => setIngresoModalOpen(true)}
@@ -548,6 +599,109 @@ export const Caja: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Cerrar Turno */}
+      {cierreModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setCierreModalOpen(false)} />
+            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-orange-100 rounded-lg mr-4">
+                  <LogOut className="w-6 h-6 text-orange-600" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900">Cerrar Turno</h3>
+              </div>
+
+              <form onSubmit={handleCerrarTurno} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nombre del usuario del turno
+                  </label>
+                  <input
+                    type="text"
+                    name="usuario"
+                    value={usuario}
+                    onChange={(e) => setUsuario(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Ej: Juan Pérez"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fecha y hora de inicio del turno
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={fechaInicioTurno.toISOString().slice(0, 16)}
+                    onChange={(e) => setFechaInicioTurno(new Date(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <p className="text-sm text-orange-800">
+                    <strong>Información:</strong> Se generará un resumen completo del turno con todas las transacciones, 
+                    totales por método de pago y detalle de reservas del período seleccionado.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6">
+                  <button
+                    type="button"
+                    onClick={() => setCierreModalOpen(false)}
+                    className="px-6 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+                  >
+                    Generar Cierre
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Consulta Cierres */}
+      {consultaCierresOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setConsultaCierresOpen(false)} />
+            <div className="inline-block w-full max-w-7xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-medium text-gray-900">Consulta de Cierres Anteriores</h3>
+                <button onClick={() => setConsultaCierresOpen(false)} className="text-gray-400 hover:text-gray-500">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <ConsultaCierres />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Resumen de Cierre */}
+      {showCierreModal && cierreGenerado && (
+        <CierreTurnoModal
+          cierre={cierreGenerado}
+          onClose={() => {
+            setShowCierreModal(false);
+            setCierreGenerado(null);
+          }}
+          onExport={(type) => {
+            console.log(`Exportando ${type} para cierre ${cierreGenerado.id}`);
+          }}
+        />
       )}
     </div>
   );

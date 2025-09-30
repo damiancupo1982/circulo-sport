@@ -39,6 +39,32 @@ export interface TransaccionCaja {
   metodo_pago?: 'efectivo' | 'transferencia' | 'pendiente';
 }
 
+export interface CierreTurno {
+  id: string;
+  usuario: string;
+  fecha_inicio: Date;
+  fecha_fin: Date;
+  duracion_minutos: number;
+  totales: {
+    efectivo: number;
+    transferencias: number;
+    expensas: number;
+    total_general: number;
+  };
+  cantidad_ventas: number;
+  transacciones: Array<{
+    fecha: string;
+    cliente_nombre: string;
+    cancha: string;
+    horario_desde: string;
+    horario_hasta: string;
+    importe: number;
+    metodo_pago: string;
+  }>;
+  reservas_detalle: Reserva[];
+  created_at: Date;
+}
+
 export interface Reserva {
   id: string;
   cancha_id: string;
