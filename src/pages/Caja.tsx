@@ -12,6 +12,24 @@ import { cierresStorage } from '../storage/cierres';
 import { CierreTurnoModal } from '../components/CierreTurno';
 import { ConsultaCierres } from '../components/ConsultaCierres';
 
+/** ---------------------------
+ * Helpers de fecha/hora (LOCAL)
+ * ---------------------------
+ * 1) toInputDateTimeLocal: convierte Date -> string "YYYY-MM-DDTHH:mm" en **hora local** (ideal para <input type="datetime-local">)
+ * 2) toLocalISO: convierte Date -> ISO equivalente a la hora local (evita el corrimiento por UTC)
+ */
+function toInputDateTimeLocal(d: Date): string {
+  // normaliza restando el offset para que el value del input sea local
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz * 60000);
+  return local.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+}
+function toLocalISO(d: Date): string {
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz * 60000);
+  return local.toISOString(); // ISO pero representando la hora local real
+}
+
 export const Caja: React.FC = () => {
   const [transacciones, setTransacciones] = useState<TransaccionCaja[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -139,7 +157,7 @@ export const Caja: React.FC = () => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget as HTMLFormElement);
     const concepto = formData.get('concepto') as string;
-    const monto = Number(formData.get('monto'));
+       const monto = Number(formData.get('monto'));
     const metodoPago = formData.get('metodo_pago') as 'efectivo' | 'transferencia';
 
     if (monto <= 0) {
@@ -171,10 +189,18 @@ export const Caja: React.FC = () => {
       return;
     }
 
-    const fechaFin = new Date();
-    const cierre = cierreUtils.generarCierre(usuarioTurno, fechaInicioTurno, fechaFin);
-    
+    // Normalizo inicio/fin a ISO local para evitar desfasajes de UTC
+    const inicioISO = toLocalISO(fechaInicioTurno);
+    const finISO = toLocalISO(new Date());
+
     try {
+      // Si tu cierreUtils espera Date, le paso Date reconstruidos desde el ISO local
+      const cierre = cierreUtils.generarCierre(
+        usuarioTurno,
+        new Date(inicioISO),
+        new Date(finISO)
+      );
+
       cierresStorage.save(cierre);
       setCierreGenerado(cierre);
       setShowCierreModal(true);
@@ -637,7 +663,7 @@ export const Caja: React.FC = () => {
                   </label>
                   <input
                     type="datetime-local"
-                    value={fechaInicioTurno.toISOString().slice(0, 16)}
+                    value={toInputDateTimeLocal(fechaInicioTurno)}
                     onChange={(e) => setFechaInicioTurno(new Date(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                     required
