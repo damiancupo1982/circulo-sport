@@ -1,4 +1,6 @@
 // src/pages/Caja.tsx
+import CierreTurnoModal from '../components/CierreTurno';
+import ConsultaCierres from '../components/ConsultaCierres';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, TrendingUp, TrendingDown, Plus, Minus,
