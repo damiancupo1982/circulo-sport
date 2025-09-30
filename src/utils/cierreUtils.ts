@@ -5,21 +5,21 @@ import { CANCHAS } from '../types';
 
 export const cierreUtils = {
   generarCierre(usuario: string, fechaInicio: Date, fechaFin: Date): CierreTurno {
-    const fechaInicioStr = fechaInicio.toISOString().split('T')[0];
-    const fechaFinStr = fechaFin.toISOString().split('T')[0];
-    
-    // Obtener todas las reservas del período
-    const todasReservas = reservasStorage.getAll();
-    const reservasPeriodo = todasReservas.filter(r => {
-      const fechaReserva = new Date(r.fecha + 'T00:00:00');
-      return fechaReserva >= fechaInicio && fechaReserva <= fechaFin;
-    });
-
     // Obtener transacciones del período
     const todasTransacciones = cajaStorage.getAll();
     const transaccionesPeriodo = todasTransacciones.filter(t => {
       return t.fecha_hora >= fechaInicio && t.fecha_hora <= fechaFin;
     });
+
+    // Obtener reservas relacionadas con las transacciones del período
+    const reservaIds = transaccionesPeriodo
+      .filter(t => t.reserva_id)
+      .map(t => t.reserva_id);
+    
+    const todasReservas = reservasStorage.getAll();
+    const reservasPeriodo = todasReservas.filter(r => 
+      reservaIds.includes(r.id)
+    );
 
     // Calcular totales por método de pago
     const totales = {
@@ -37,22 +37,41 @@ export const cierreUtils = {
           totales.transferencias += t.monto;
         }
         totales.total_general += t.monto;
+      } else if (t.tipo === 'retiro') {
+        // Los retiros reducen el total de efectivo
+        totales.efectivo -= t.monto;
+        totales.total_general -= t.monto;
       }
     });
 
     // Generar detalle de transacciones
-    const transaccionesDetalle = reservasPeriodo.map(r => {
-      const cancha = CANCHAS.find(c => c.id === r.cancha_id);
-      return {
-        fecha: r.fecha,
-        cliente_nombre: r.cliente_nombre,
-        cancha: cancha?.nombre || r.cancha_id,
-        horario_desde: r.hora_inicio,
-        horario_hasta: r.hora_fin,
-        importe: r.total,
-        metodo_pago: r.metodo_pago
-      };
-    });
+    const transaccionesDetalle = transaccionesPeriodo
+      .filter(t => t.tipo === 'ingreso' && t.reserva_id)
+      .map(t => {
+        const reserva = todasReservas.find(r => r.id === t.reserva_id);
+        if (!reserva) {
+          return {
+            fecha: t.fecha_hora.toISOString().split('T')[0],
+            cliente_nombre: 'Cliente no encontrado',
+            cancha: 'N/A',
+            horario_desde: 'N/A',
+            horario_hasta: 'N/A',
+            importe: t.monto,
+            metodo_pago: t.metodo_pago || 'N/A'
+          };
+        }
+        
+        const cancha = CANCHAS.find(c => c.id === reserva.cancha_id);
+        return {
+          fecha: reserva.fecha,
+          cliente_nombre: reserva.cliente_nombre,
+          cancha: cancha?.nombre || reserva.cancha_id,
+          horario_desde: reserva.hora_inicio,
+          horario_hasta: reserva.hora_fin,
+          importe: t.monto,
+          metodo_pago: t.metodo_pago || 'N/A'
+        };
+      });
 
     const duracionMinutos = Math.floor((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60));
 
@@ -63,7 +82,7 @@ export const cierreUtils = {
       fecha_fin: fechaFin,
       duracion_minutos: duracionMinutos,
       totales,
-      cantidad_ventas: reservasPeriodo.length,
+      cantidad_ventas: transaccionesDetalle.length,
       transacciones: transaccionesDetalle,
       reservas_detalle: reservasPeriodo,
       created_at: new Date()
