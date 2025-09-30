@@ -3,97 +3,147 @@ import { reservasStorage } from '../storage/reservas';
 import { cajaStorage } from '../storage/caja';
 import { CANCHAS } from '../types';
 
+type MetodoPago = 'efectivo' | 'transferencia' | 'expensa' | 'pendiente' | undefined;
+
+function toDateSafe(v: any): Date {
+  // Acepta Date o string; si viene undefined devuelve fecha inválida que luego se filtra
+  if (v instanceof Date) return v;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? new Date('Invalid') : d;
+}
+function n(x: any): number {
+  const v = Number(x);
+  return Number.isFinite(v) ? v : 0;
+}
+
 export const cierreUtils = {
   generarCierre(usuario: string, fechaInicio: Date, fechaFin: Date): CierreTurno {
-    // Obtener transacciones del período
-    const todasTransacciones = cajaStorage.getAll();
-    const transaccionesPeriodo = todasTransacciones.filter(t => {
-      return t.fecha_hora >= fechaInicio && t.fecha_hora <= fechaFin;
+    // 1) Traer todas las transacciones y normalizar fechas
+    const todasTransacciones = (cajaStorage.getAll() || []).map((t: any) => ({
+      ...t,
+      fecha_hora: toDateSafe(t.fecha_hora),
+      monto: n(t.monto),
+    }));
+
+    const ini = fechaInicio.getTime();
+    const fin = fechaFin.getTime();
+
+    // 2) Filtrar por rango (fecha_hora válida, dentro de [inicio, fin])
+    const transaccionesPeriodo = todasTransacciones.filter((t: any) => {
+      const ts = t.fecha_hora instanceof Date ? t.fecha_hora.getTime() : NaN;
+      return Number.isFinite(ts) && ts >= ini && ts <= fin;
     });
 
-    // Obtener reservas relacionadas con las transacciones del período
+    // 3) Buscar reservas relacionadas (para enriquecer detalle)
     const reservaIds = transaccionesPeriodo
-      .filter(t => t.reserva_id)
-      .map(t => t.reserva_id);
-    
-    const todasReservas = reservasStorage.getAll();
-    const reservasPeriodo = todasReservas.filter(r => 
-      reservaIds.includes(r.id)
-    );
+      .filter((t: any) => !!t.reserva_id)
+      .map((t: any) => t.reserva_id);
 
-    // Calcular totales por método de pago
+    const todasReservas: Reserva[] = reservasStorage.getAll() || [];
+    const reservasPeriodo = todasReservas.filter((r: any) => reservaIds.includes(r.id));
+
+    // 4) Totales por método
     const totales = {
       efectivo: 0,
       transferencias: 0,
-      expensas: 0, // Para futuras implementaciones
-      total_general: 0
+      expensas: 0, // reservado para futuro
+      total_general: 0,
     };
 
-    transaccionesPeriodo.forEach(t => {
+    transaccionesPeriodo.forEach((t: any) => {
       if (t.tipo === 'ingreso') {
         if (t.metodo_pago === 'efectivo') {
-          totales.efectivo += t.monto;
+          totales.efectivo += n(t.monto);
         } else if (t.metodo_pago === 'transferencia') {
-          totales.transferencias += t.monto;
+          totales.transferencias += n(t.monto);
+        } else if (t.metodo_pago === 'expensa') {
+          totales.expensas += n(t.monto);
         }
-        totales.total_general += t.monto;
+        totales.total_general += n(t.monto);
       } else if (t.tipo === 'retiro') {
-        // Los retiros reducen el total de efectivo
-        totales.efectivo -= t.monto;
-        totales.total_general -= t.monto;
+        // retiros descuentan del efectivo y del total general
+        totales.efectivo -= n(t.monto);
+        totales.total_general -= n(t.monto);
       }
     });
 
-    // Generar detalle de transacciones
+    // 5) Detalle de transacciones (todas las de ingreso: con o sin reserva)
     const transaccionesDetalle = transaccionesPeriodo
-      .filter(t => t.tipo === 'ingreso' && t.reserva_id)
-      .map(t => {
-        const reserva = todasReservas.find(r => r.id === t.reserva_id);
-        if (!reserva) {
+      .filter((t: any) => t.tipo === 'ingreso')
+      .map((t: any) => {
+        const fechaStr =
+          t.fecha_hora instanceof Date
+            ? t.fecha_hora.toISOString().split('T')[0]
+            : 'N/A';
+
+        if (t.reserva_id) {
+          const reserva = todasReservas.find((r: any) => r.id === t.reserva_id);
+          if (!reserva) {
+            return {
+              fecha: fechaStr,
+              cliente_nombre: t.cliente_nombre || 'Cliente no encontrado',
+              cancha: 'N/A',
+              horario_desde: 'N/A',
+              horario_hasta: 'N/A',
+              importe: n(t.monto),
+              metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
+            };
+          }
+          const cancha = CANCHAS.find(c => c.id === reserva.cancha_id);
           return {
-            fecha: t.fecha_hora.toISOString().split('T')[0],
-            cliente_nombre: 'Cliente no encontrado',
-            cancha: 'N/A',
-            horario_desde: 'N/A',
-            horario_hasta: 'N/A',
-            importe: t.monto,
-            metodo_pago: t.metodo_pago || 'N/A'
+            fecha: reserva.fecha || fechaStr,
+            cliente_nombre: reserva.cliente_nombre || t.cliente_nombre || 'Cliente',
+            cancha: cancha?.nombre || reserva.cancha_id,
+            horario_desde: reserva.hora_inicio || '',
+            horario_hasta: reserva.hora_fin || '',
+            importe: n(t.monto),
+            metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
           };
         }
-        
-        const cancha = CANCHAS.find(c => c.id === reserva.cancha_id);
+
+        // Ingreso manual (sin reserva)
         return {
-          fecha: reserva.fecha,
-          cliente_nombre: reserva.cliente_nombre,
-          cancha: cancha?.nombre || reserva.cancha_id,
-          horario_desde: reserva.hora_inicio,
-          horario_hasta: reserva.hora_fin,
-          importe: t.monto,
-          metodo_pago: t.metodo_pago || 'N/A'
+          fecha: fechaStr,
+          cliente_nombre: t.cliente_nombre || t.concepto || 'Ingreso',
+          cancha: 'N/A',
+          horario_desde: '',
+          horario_hasta: '',
+          importe: n(t.monto),
+          metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
         };
       });
 
-    const duracionMinutos = Math.floor((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60));
+    const duracionMinutos = Math.max(
+      0,
+      Math.floor((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60))
+    );
 
-    return {
+    // 6) Armar el cierre
+    const cierre: CierreTurno = {
       id: `cierre-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       usuario,
-      fecha_inicio: fechaInicio,
-      fecha_fin: fechaFin,
+      fecha_inicio: new Date(fechaInicio),
+      fecha_fin: new Date(fechaFin),
       duracion_minutos: duracionMinutos,
-      totales,
+      totales: {
+        efectivo: Math.round(totales.efectivo),
+        transferencias: Math.round(totales.transferencias),
+        expensas: Math.round(totales.expensas),
+        total_general: Math.round(totales.total_general),
+      },
       cantidad_ventas: transaccionesDetalle.length,
       transacciones: transaccionesDetalle,
       reservas_detalle: reservasPeriodo,
-      created_at: new Date()
+      created_at: new Date(),
     };
+
+    return cierre;
   },
 
   exportToPDF(cierre: CierreTurno): void {
     const content = this.generatePrintableContent(cierre);
     const blob = new Blob([content], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    
     const printWindow = window.open(url, '_blank');
     if (printWindow) {
       printWindow.onload = () => {
@@ -114,7 +164,7 @@ export const cierreUtils = {
       'Horario Desde',
       'Horario Hasta',
       'Importe',
-      'Método de Pago'
+      'Método de Pago',
     ];
 
     const rows = cierre.transacciones.map(t => [
@@ -124,7 +174,7 @@ export const cierreUtils = {
       t.horario_desde,
       t.horario_hasta,
       t.importe.toString(),
-      t.metodo_pago
+      t.metodo_pago as string,
     ]);
 
     const csvContent = [
@@ -136,7 +186,7 @@ export const cierreUtils = {
       `Cantidad de Ventas: ${cierre.cantidad_ventas}`,
       '',
       headers.join(','),
-      ...rows.map(row => row.join(','))
+      ...rows.map(row => row.join(',')),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -167,7 +217,9 @@ export const cierreUtils = {
           th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
           th { background-color: #f3f4f6; }
           .total-row { font-weight: bold; background-color: #e5e7eb; }
-          @media print { body { margin: 0; } }
+          @media print { body { margin: 0; }
+            .no-print { display: none; }
+          }
         </style>
       </head>
       <body>
@@ -189,6 +241,7 @@ export const cierreUtils = {
             <h3>Resumen de Ventas</h3>
             <p><strong>Efectivo:</strong> ${formatCurrency(cierre.totales.efectivo)}</p>
             <p><strong>Transferencias:</strong> ${formatCurrency(cierre.totales.transferencias)}</p>
+            <p><strong>Expensas:</strong> ${formatCurrency(cierre.totales.expensas)}</p>
             <p><strong>Total General:</strong> ${formatCurrency(cierre.totales.total_general)}</p>
             <p><strong>Cantidad de Ventas:</strong> ${cierre.cantidad_ventas}</p>
           </div>
@@ -199,7 +252,7 @@ export const cierreUtils = {
           <thead>
             <tr>
               <th>Fecha</th>
-              <th>Cliente</th>
+              <th>Cliente / Concepto</th>
               <th>Cancha</th>
               <th>Horario</th>
               <th>Importe</th>
@@ -212,9 +265,9 @@ export const cierreUtils = {
                 <td>${t.fecha}</td>
                 <td>${t.cliente_nombre}</td>
                 <td>${t.cancha}</td>
-                <td>${t.horario_desde} - ${t.horario_hasta}</td>
+                <td>${[t.horario_desde, t.horario_hasta].filter(Boolean).join(' - ')}</td>
                 <td>${formatCurrency(t.importe)}</td>
-                <td>${t.metodo_pago}</td>
+                <td>${t.metodo_pago || ''}</td>
               </tr>
             `).join('')}
             <tr class="total-row">
