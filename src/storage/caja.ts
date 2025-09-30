@@ -40,7 +40,6 @@ export const cajaStorage = {
   },
 
   getByDate(fechaYmdLocal: string): TransaccionCaja[] {
-    // fechaYmdLocal esperado: "YYYY-MM-DD" en horario LOCAL
     return this.getAll().filter(t => ymdLocal(t.fecha_hora) === fechaYmdLocal);
   },
 
@@ -95,7 +94,6 @@ export const cajaStorage = {
       const existingIndex = transacciones.findIndex(t => t.id === transaccion.id);
       const toSave: TransaccionCaja = {
         ...transaccion,
-        // garantizamos Date válido
         fecha_hora: toDateSafe(transaccion.fecha_hora || new Date()),
         monto: n(transaccion.monto),
       };
@@ -104,7 +102,6 @@ export const cajaStorage = {
       } else {
         transacciones.push(toSave);
       }
-      // JSON.stringify serializa Date a ISO string (correcto)
       localStorage.setItem(STORAGE_KEY, JSON.stringify(transacciones));
     } catch (error) {
       console.error('Error saving transaccion:', error);
