@@ -3,10 +3,8 @@ import { reservasStorage } from '../storage/reservas';
 import { cajaStorage } from '../storage/caja';
 import { CANCHAS } from '../types';
 
-type MetodoPago = 'efectivo' | 'transferencia' | 'expensa' | 'pendiente' | undefined;
-
+/** Helpers seguros */
 function toDateSafe(v: any): Date {
-  // Acepta Date o string; si viene undefined devuelve fecha inválida que luego se filtra
   if (v instanceof Date) return v;
   const d = new Date(v);
   return isNaN(d.getTime()) ? new Date('Invalid') : d;
@@ -18,23 +16,23 @@ function n(x: any): number {
 
 export const cierreUtils = {
   generarCierre(usuario: string, fechaInicio: Date, fechaFin: Date): CierreTurno {
-    // 1) Traer todas las transacciones y normalizar fechas
+    // 1) Traer todas las transacciones; normalizar tipos
     const todasTransacciones = (cajaStorage.getAll() || []).map((t: any) => ({
       ...t,
-      fecha_hora: toDateSafe(t.fecha_hora),
+      fecha_hora: toDateSafe(t.fecha_hora), // <- CLAVE: siempre Date
       monto: n(t.monto),
     }));
 
     const ini = fechaInicio.getTime();
     const fin = fechaFin.getTime();
 
-    // 2) Filtrar por rango (fecha_hora válida, dentro de [inicio, fin])
+    // 2) Filtrar por rango con getTime() (evita comparar Date vs string)
     const transaccionesPeriodo = todasTransacciones.filter((t: any) => {
-      const ts = t.fecha_hora instanceof Date ? t.fecha_hora.getTime() : NaN;
+      const ts = t.fecha_hora.getTime();
       return Number.isFinite(ts) && ts >= ini && ts <= fin;
     });
 
-    // 3) Buscar reservas relacionadas (para enriquecer detalle)
+    // 3) Cargar reservas relacionadas para enriquecer detalle
     const reservaIds = transaccionesPeriodo
       .filter((t: any) => !!t.reserva_id)
       .map((t: any) => t.reserva_id);
@@ -42,7 +40,7 @@ export const cierreUtils = {
     const todasReservas: Reserva[] = reservasStorage.getAll() || [];
     const reservasPeriodo = todasReservas.filter((r: any) => reservaIds.includes(r.id));
 
-    // 4) Totales por método
+    // 4) Calcular totales por método
     const totales = {
       efectivo: 0,
       transferencias: 0,
@@ -52,17 +50,12 @@ export const cierreUtils = {
 
     transaccionesPeriodo.forEach((t: any) => {
       if (t.tipo === 'ingreso') {
-        if (t.metodo_pago === 'efectivo') {
-          totales.efectivo += n(t.monto);
-        } else if (t.metodo_pago === 'transferencia') {
-          totales.transferencias += n(t.monto);
-        } else if (t.metodo_pago === 'expensa') {
-          totales.expensas += n(t.monto);
-        }
+        if (t.metodo_pago === 'efectivo') totales.efectivo += n(t.monto);
+        else if (t.metodo_pago === 'transferencia') totales.transferencias += n(t.monto);
+        else if (t.metodo_pago === 'expensa') totales.expensas += n(t.monto);
         totales.total_general += n(t.monto);
       } else if (t.tipo === 'retiro') {
-        // retiros descuentan del efectivo y del total general
-        totales.efectivo -= n(t.monto);
+        totales.efectivo -= n(t.monto);       // retiro sale de efectivo
         totales.total_general -= n(t.monto);
       }
     });
@@ -77,8 +70,8 @@ export const cierreUtils = {
             : 'N/A';
 
         if (t.reserva_id) {
-          const reserva = todasReservas.find((r: any) => r.id === t.reserva_id);
-          if (!reserva) {
+          const r = todasReservas.find((rr: any) => rr.id === t.reserva_id);
+          if (!r) {
             return {
               fecha: fechaStr,
               cliente_nombre: t.cliente_nombre || 'Cliente no encontrado',
@@ -86,18 +79,18 @@ export const cierreUtils = {
               horario_desde: 'N/A',
               horario_hasta: 'N/A',
               importe: n(t.monto),
-              metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
+              metodo_pago: (t.metodo_pago as string) || 'N/A',
             };
           }
-          const cancha = CANCHAS.find(c => c.id === reserva.cancha_id);
+          const cancha = CANCHAS.find(c => c.id === r.cancha_id);
           return {
-            fecha: reserva.fecha || fechaStr,
-            cliente_nombre: reserva.cliente_nombre || t.cliente_nombre || 'Cliente',
-            cancha: cancha?.nombre || reserva.cancha_id,
-            horario_desde: reserva.hora_inicio || '',
-            horario_hasta: reserva.hora_fin || '',
+            fecha: r.fecha || fechaStr,
+            cliente_nombre: r.cliente_nombre || t.cliente_nombre || 'Cliente',
+            cancha: cancha?.nombre || r.cancha_id,
+            horario_desde: r.hora_inicio || '',
+            horario_hasta: r.hora_fin || '',
             importe: n(t.monto),
-            metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
+            metodo_pago: (t.metodo_pago as string) || 'N/A',
           };
         }
 
@@ -109,7 +102,7 @@ export const cierreUtils = {
           horario_desde: '',
           horario_hasta: '',
           importe: n(t.monto),
-          metodo_pago: (t.metodo_pago as MetodoPago) || 'N/A',
+          metodo_pago: (t.metodo_pago as string) || 'N/A',
         };
       });
 
@@ -118,7 +111,7 @@ export const cierreUtils = {
       Math.floor((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60))
     );
 
-    // 6) Armar el cierre
+    // 6) Construir objeto cierre
     const cierre: CierreTurno = {
       id: `cierre-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       usuario,
@@ -174,7 +167,7 @@ export const cierreUtils = {
       t.horario_desde,
       t.horario_hasta,
       t.importe.toString(),
-      t.metodo_pago as string,
+      t.metodo_pago,
     ]);
 
     const csvContent = [
@@ -182,6 +175,7 @@ export const cierreUtils = {
       `Período: ${cierre.fecha_inicio.toLocaleString()} - ${cierre.fecha_fin.toLocaleString()}`,
       `Total Efectivo: $${cierre.totales.efectivo.toLocaleString()}`,
       `Total Transferencias: $${cierre.totales.transferencias.toLocaleString()}`,
+      `Total Expensas: $${cierre.totales.expensas.toLocaleString()}`,
       `Total General: $${cierre.totales.total_general.toLocaleString()}`,
       `Cantidad de Ventas: ${cierre.cantidad_ventas}`,
       '',
@@ -217,9 +211,7 @@ export const cierreUtils = {
           th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
           th { background-color: #f3f4f6; }
           .total-row { font-weight: bold; background-color: #e5e7eb; }
-          @media print { body { margin: 0; }
-            .no-print { display: none; }
-          }
+          @media print { body { margin: 0; } }
         </style>
       </head>
       <body>
