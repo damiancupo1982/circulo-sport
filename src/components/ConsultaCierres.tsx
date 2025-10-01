@@ -3,9 +3,7 @@ import { Trash2, Search, FileText, FileDown, Eye } from 'lucide-react';
 import { CierreTurno } from '../types';
 import { cierresStorage } from '../storage/cierres';
 import { cierreUtils } from '../utils/cierreUtils';
-
-// ✅ Import del modal por DEFAULT (coincide con tu export actual)
-import CierreTurnoModal from './CierreTurno';
+import CierreTurnoModal from './CierreTurno'; // ← import del modal (default)
 
 const ConsultaCierres: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -14,7 +12,6 @@ const ConsultaCierres: React.FC = () => {
   const cierres = useMemo<CierreTurno[]>(() => {
     try {
       const all = cierresStorage.getAll() || [];
-      // Orden más reciente primero
       return [...all].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -36,16 +33,11 @@ const ConsultaCierres: React.FC = () => {
   const handleDelete = (id: string) => {
     if (!confirm('¿Eliminar este cierre? Esta acción no se puede deshacer.')) return;
     cierresStorage.delete(id);
-    // Para mantenerlo simple y coherente con storage local:
     location.reload();
   };
 
   const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0
-    }).format(amount);
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(amount);
 
   return (
     <div className="space-y-4">
