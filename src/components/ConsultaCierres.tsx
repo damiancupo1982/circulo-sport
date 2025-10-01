@@ -1,220 +1,129 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Calendar, Eye, Printer, Download, FileText, Filter } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Trash2, Search, FileText, FileDown, Eye } from 'lucide-react';
 import { CierreTurno } from '../types';
 import { cierresStorage } from '../storage/cierres';
-import { CierreTurnoModal } from './CierreTurno';
+import { cierreUtils } from '../utils/cierreUtils';
 
-export const ConsultaCierres: React.FC = () => {
-  const [cierres, setCierres] = useState<CierreTurno[]>([]);
-  const [filteredCierres, setFilteredCierres] = useState<CierreTurno[]>([]);
+// ✅ Import del modal por DEFAULT (coincide con tu export actual)
+import CierreTurnoModal from './CierreTurno';
+
+const ConsultaCierres: React.FC = () => {
+  const [query, setQuery] = useState('');
   const [selectedCierre, setSelectedCierre] = useState<CierreTurno | null>(null);
-  
-  // Filtros
-  const [filtroUsuario, setFiltroUsuario] = useState('');
-  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
-  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
 
-  useEffect(() => {
-    loadCierres();
+  const cierres = useMemo<CierreTurno[]>(() => {
+    try {
+      const all = cierresStorage.getAll() || [];
+      // Orden más reciente primero
+      return [...all].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    } catch {
+      return [];
+    }
   }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [cierres, filtroUsuario, filtroFechaDesde, filtroFechaHasta]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return cierres;
+    return cierres.filter(c =>
+      c.usuario.toLowerCase().includes(q) ||
+      new Date(c.fecha_inicio).toLocaleDateString('es-AR').includes(q) ||
+      new Date(c.fecha_fin).toLocaleDateString('es-AR').includes(q)
+    );
+  }, [query, cierres]);
 
-  const loadCierres = () => {
-    const allCierres = cierresStorage.getAll();
-    setCierres(allCierres.sort((a, b) => b.fecha_inicio.getTime() - a.fecha_inicio.getTime()));
-  };
-
-  const applyFilters = () => {
-    let filtered = [...cierres];
-
-    // Filtro por usuario
-    if (filtroUsuario.trim()) {
-      filtered = filtered.filter(c => 
-        c.usuario.toLowerCase().includes(filtroUsuario.toLowerCase())
-      );
-    }
-
-    // Filtro por rango de fechas
-    if (filtroFechaDesde) {
-      const fechaDesde = new Date(filtroFechaDesde + 'T00:00:00');
-      filtered = filtered.filter(c => c.fecha_inicio >= fechaDesde);
-    }
-
-    if (filtroFechaHasta) {
-      const fechaHasta = new Date(filtroFechaHasta + 'T23:59:59');
-      filtered = filtered.filter(c => c.fecha_inicio <= fechaHasta);
-    }
-
-    setFilteredCierres(filtered);
-  };
-
-  const clearFilters = () => {
-    setFiltroUsuario('');
-    setFiltroFechaDesde('');
-    setFiltroFechaHasta('');
+  const handleDelete = (id: string) => {
+    if (!confirm('¿Eliminar este cierre? Esta acción no se puede deshacer.')) return;
+    cierresStorage.delete(id);
+    // Para mantenerlo simple y coherente con storage local:
+    location.reload();
   };
 
   const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(amount);
-
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
+    new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0
+    }).format(amount);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Consulta de Cierres Anteriores</h2>
-        <button
-          onClick={clearFilters}
-          className="flex items-center px-3 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-        >
-          <Filter className="w-4 h-4 mr-2" />
-          Limpiar Filtros
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white p-4 rounded-lg shadow border">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Search className="w-4 h-4 inline mr-1" />
-              Filtrar por Usuario
-            </label>
-            <input
-              type="text"
-              value={filtroUsuario}
-              onChange={(e) => setFiltroUsuario(e.target.value)}
-              placeholder="Nombre del usuario..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Desde
-            </label>
-            <input
-              type="date"
-              value={filtroFechaDesde}
-              onChange={(e) => setFiltroFechaDesde(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Hasta
-            </label>
-            <input
-              type="date"
-              value={filtroFechaHasta}
-              onChange={(e) => setFiltroFechaHasta(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Buscar por usuario o fecha..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+          />
         </div>
       </div>
 
-      {/* Tabla de resultados */}
-      <div className="bg-white rounded-lg shadow border overflow-hidden">
-        <div className="p-4 border-b bg-gray-50">
-          <h3 className="text-lg font-medium text-gray-900">
-            Resultados ({filteredCierres.length} cierres encontrados)
-          </h3>
-        </div>
-
-        {filteredCierres.length === 0 ? (
-          <div className="p-8 text-center">
-            <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No se encontraron cierres</h3>
-            <p className="text-gray-500">
-              {cierres.length === 0 
-                ? 'No hay cierres de turno registrados aún.'
-                : 'Intenta ajustar los filtros de búsqueda.'
-              }
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Usuario
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Fecha y Hora
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Duración
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ventas
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Recaudado
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredCierres.map((cierre) => (
-                  <tr key={cierre.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{cierre.usuario}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {cierre.fecha_inicio.toLocaleDateString('es-AR')}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {cierre.fecha_inicio.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} - 
-                        {cierre.fecha_fin.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDuration(cierre.duracion_minutos)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {cierre.cantidad_ventas}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(cierre.totales.total_general)}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        Ef: {formatCurrency(cierre.totales.efectivo)} | 
-                        Tr: {formatCurrency(cierre.totales.transferencias)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setSelectedCierre(cierre)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Ver detalle"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="overflow-auto border rounded-lg">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="text-left p-3 font-medium text-gray-600">Fecha</th>
+              <th className="text-left p-3 font-medium text-gray-600">Usuario</th>
+              <th className="text-left p-3 font-medium text-gray-600">Período</th>
+              <th className="text-left p-3 font-medium text-gray-600">Total</th>
+              <th className="text-left p-3 font-medium text-gray-600">Ventas</th>
+              <th className="text-left p-3 font-medium text-gray-600">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td className="p-3 text-gray-500" colSpan={6}>No hay cierres.</td>
+              </tr>
+            ) : filtered.map(c => (
+              <tr key={c.id} className="border-t">
+                <td className="p-3">{new Date(c.created_at).toLocaleString('es-AR')}</td>
+                <td className="p-3">{c.usuario}</td>
+                <td className="p-3">
+                  {new Date(c.fecha_inicio).toLocaleString('es-AR')} — {new Date(c.fecha_fin).toLocaleString('es-AR')}
+                </td>
+                <td className="p-3">{formatCurrency(c.totales.total_general)}</td>
+                <td className="p-3">{c.cantidad_ventas}</td>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 text-xs bg-white border rounded hover:bg-gray-50 flex items-center gap-1"
+                      onClick={() => cierreUtils.exportToCSV(c)}
+                      title="Exportar CSV"
+                    >
+                      <FileText className="w-4 h-4" /> CSV
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs text-white bg-indigo-600 rounded hover:bg-indigo-700 flex items-center gap-1"
+                      onClick={() => cierreUtils.exportToPDF(c)}
+                      title="Exportar PDF"
+                    >
+                      <FileDown className="w-4 h-4" /> PDF
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs bg-white border rounded hover:bg-gray-50 text-purple-700 flex items-center gap-1"
+                      onClick={() => setSelectedCierre(c)}
+                      title="Ver detalle"
+                    >
+                      <Eye className="w-4 h-4" /> Ver
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs bg-white border rounded hover:bg-gray-50 text-red-600 flex items-center gap-1"
+                      onClick={() => handleDelete(c.id)}
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" /> Eliminar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal de detalle */}
@@ -230,3 +139,5 @@ export const ConsultaCierres: React.FC = () => {
     </div>
   );
 };
+
+export default ConsultaCierres;
