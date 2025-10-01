@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layout } from './components/Layout';
 import { Reservas } from './pages/Reservas';
 import { Clientes } from './pages/Clientes';
-import Caja from './pages/Caja';
+import { Caja } from './pages/Caja';
 import { Exportar } from './pages/Exportar';
 
 function App() {

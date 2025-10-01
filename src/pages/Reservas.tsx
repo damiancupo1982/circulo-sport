@@ -5,7 +5,6 @@ import { reservasStorage } from '../storage/reservas';
 import { cajaStorage } from '../storage/caja';
 import { dateUtils } from '../utils/dates';
 import { ReservaModal } from '../components/ReservaModal';
-import { ReservasListado } from '../components/ReservasListado';
 
 export const Reservas: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -322,9 +321,6 @@ export const Reservas: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* === NUEVA SECCIÓN: Listado global con filtros y export === */}
-      <ReservasListado />
 
       {/* Modal */}
       <ReservaModal
