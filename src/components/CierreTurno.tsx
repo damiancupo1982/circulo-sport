@@ -105,6 +105,6 @@ const CierreTurnoModal: React.FC<Props> = ({ cierre, onClose, onExport }) => {
   );
 };
 
-// ✅ Export named y default para que ambos imports funcionen
-export { CierreTurnoModal };
-export default CierreTurnoModal;
+// Exports
+export { CierreTurnoModal };      // named
+export default CierreTurnoModal;  // default
